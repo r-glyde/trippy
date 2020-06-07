@@ -1,6 +1,6 @@
 package com.glyde.trippy
 
-import java.time.Instant
+import java.util.concurrent.TimeUnit
 
 import cats.effect.{Clock, Sync}
 import cats.effect.concurrent.Ref
@@ -8,7 +8,6 @@ import cats.effect.implicits._
 import cats.implicits._
 
 import scala.concurrent.duration.FiniteDuration
-import java.util.concurrent.TimeUnit
 
 trait CircuitBreaker[F[_]] {
   def execute[A](task: F[A]): F[A]
@@ -18,7 +17,7 @@ trait CircuitBreaker[F[_]] {
 object CircuitBreaker {
   // add a call timeout
   // make resetTimeout: FiniteDuration => FiniteDuration
-  def make[F[_] : Sync : Clock](
+  def of[F[_] : Sync : Clock](
       maxFailures: Int,
       resetTimeout: FiniteDuration
   ): F[CircuitBreaker[F]] = Ref.of[F, CircuitState](Closed(0)).map { ref =>

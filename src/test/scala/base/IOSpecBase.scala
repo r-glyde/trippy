@@ -5,6 +5,7 @@ import org.scalatest.Assertion
 import org.scalatest.wordspec.AsyncWordSpecLike
 
 import scala.concurrent.{ExecutionContext, Future}
+import scala.language.implicitConversions
 
 trait IOSpecBase extends AsyncWordSpecLike {
   override implicit val executionContext: ExecutionContext = ExecutionContext.global

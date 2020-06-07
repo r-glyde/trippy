@@ -3,7 +3,8 @@ scalaVersion := "2.13.2"
 version := "0.1.0-SNAPSHOT"
 
 scalacOptions ++= Seq(
-  "-deprecation"
+  "-deprecation",
+  "-feature"
 )
 
 libraryDependencies ++= Seq(
