@@ -3,6 +3,7 @@ package com.glyde.trippy
 import base.IOSpecBase
 import cats.effect.IO
 import cats.implicits._
+import com.glyde.trippy.CircuitBreakerError._
 import org.scalatest.EitherValues
 import org.scalatest.Suite
 import org.scalatest.matchers.should.Matchers
@@ -47,19 +48,6 @@ trait CircuitBreakerBehaviour { this: IOSpecBase with Matchers with Suite with E
         failA.left.value.getMessage shouldBe "Boom"
         state shouldBe a[Open]
         failB.left.value shouldBe CircuitBreakerRejection
-      }
-    }
-
-    "fail fast a task after reaching maxFailures from call timeouts" in {
-      for {
-        breaker <- createBreaker(1, 10.seconds, 1.millis)
-        slow    <- breaker.execute(IO.sleep(100.millis) >> successIO).attempt
-        state   <- breaker.state
-        fail    <- breaker.execute(successIO).attempt
-      } yield {
-        slow.right.value shouldBe 42
-        state shouldBe a[Open]
-        fail.left.value shouldBe CircuitBreakerRejection
       }
     }
 

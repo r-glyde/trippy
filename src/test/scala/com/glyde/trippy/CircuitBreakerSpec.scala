@@ -3,6 +3,7 @@ package com.glyde.trippy
 import base.IOSpecBase
 import cats.effect.IO
 import cats.implicits._
+import com.glyde.trippy.CircuitBreakerError._
 import org.scalatest.EitherValues
 import org.scalatest.Suite
 import org.scalatest.matchers.should.Matchers
@@ -28,6 +29,48 @@ class CircuitBreakerSpec extends IOSpecBase with Matchers with Suite with Either
         output.right.value shouldBe 42
       }
     }
+
+    "fail fast a task after reaching maxFailures from call timeouts" in {
+      for {
+        breaker <- CircuitBreaker.ofSync[IO](1, 10.seconds, 1.millis)
+        slow    <- breaker.execute(IO.sleep(100.millis) >> successIO).attempt
+        state   <- breaker.state
+        fail    <- breaker.execute(successIO).attempt
+      } yield {
+        slow.right.value shouldBe 42
+        state shouldBe a[Open]
+        fail.left.value shouldBe CircuitBreakerRejection
+      }
+    }
+  }
+
+  "A concurrent circuit breaker" should {
+    behave like circuitBreaker(CircuitBreaker.ofConc[IO])
+
+    "short circuit task execution exceeding callTimeout" in {
+      for {
+        breaker <- CircuitBreaker.ofConc[IO](1, 10.seconds, 1.millis)
+        slow    <- breaker.execute(IO.sleep(100.millis) >> successIO).attempt
+        state   <- breaker.state
+      } yield {
+        slow.left.value shouldBe CircuitBreakerTimeout
+        state shouldBe a[Open]
+      }
+    }
+
+    "fail fast a task after reaching maxFailures from call timeouts" in {
+      for {
+        breaker <- CircuitBreaker.ofConc[IO](1, 10.seconds, 1.millis)
+        slow    <- breaker.execute(IO.sleep(100.millis) >> successIO).attempt
+        state   <- breaker.state
+        fail    <- breaker.execute(successIO).attempt
+      } yield {
+        slow.left.value shouldBe CircuitBreakerTimeout
+        state shouldBe a[Open]
+        fail.left.value shouldBe CircuitBreakerRejection
+      }
+    }
+
   }
 
 }
