@@ -20,7 +20,7 @@ class CircuitBreakerSpec extends IOSpecBase with Matchers with Suite with Either
     "increment failure count when task exceeds callTimeout" in {
       for {
         breaker <- CircuitBreaker.sync[IO](2, 10.seconds, 1.millis)
-        slow    <- breaker.execute(IO.sleep(100.millis) >> successIO).attempt
+        slow    <- breaker.execute(IO.sleep(250.millis) >> successIO).attempt
         state   <- breaker.state
         output  <- breaker.execute(successIO).attempt
       } yield {
@@ -33,7 +33,7 @@ class CircuitBreakerSpec extends IOSpecBase with Matchers with Suite with Either
     "fail fast a task after reaching maxFailures from call timeouts" in {
       for {
         breaker <- CircuitBreaker.sync[IO](1, 10.seconds, 1.millis)
-        slow    <- breaker.execute(IO.sleep(100.millis) >> successIO).attempt
+        slow    <- breaker.execute(IO.sleep(250.millis) >> successIO).attempt
         state   <- breaker.state
         fail    <- breaker.execute(successIO).attempt
       } yield {
@@ -50,7 +50,7 @@ class CircuitBreakerSpec extends IOSpecBase with Matchers with Suite with Either
     "short circuit task execution exceeding callTimeout" in {
       for {
         breaker <- CircuitBreaker.concurrent[IO](1, 10.seconds, 1.millis)
-        slow    <- breaker.execute(IO.sleep(100.millis) >> successIO).attempt
+        slow    <- breaker.execute(IO.sleep(250.millis) >> successIO).attempt
         state   <- breaker.state
       } yield {
         slow.left.value shouldBe CircuitBreakerTimeout
@@ -61,7 +61,7 @@ class CircuitBreakerSpec extends IOSpecBase with Matchers with Suite with Either
     "fail fast a task after reaching maxFailures from call timeouts" in {
       for {
         breaker <- CircuitBreaker.concurrent[IO](1, 10.seconds, 1.millis)
-        slow    <- breaker.execute(IO.sleep(100.millis) >> successIO).attempt
+        slow    <- breaker.execute(IO.sleep(250.millis) >> successIO).attempt
         state   <- breaker.state
         fail    <- breaker.execute(successIO).attempt
       } yield {

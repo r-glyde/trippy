@@ -9,12 +9,17 @@ import cats.implicits._
 
 import scala.concurrent.duration.FiniteDuration
 
-sealed abstract class CircuitBreaker[F[_] : Sync](private val ref: Ref[F, CircuitState]) {
+sealed abstract class CircuitBreaker[F[_] : Sync] private (
+    private val ref: Ref[F, CircuitState],
+    private val whenClosed: Option[F[Unit]],
+    private val whenOpened: Option[F[Unit]],
+    private val whenHalfOpened: Option[F[Unit]]
+) {
   def execute[A](task: F[A]): F[A]
-  def onClose: F[Unit]
-  def onOpen: F[Unit]
-  def onHalfOpen: F[Unit]
   def state: F[CircuitState] = ref.get
+  def onClose: F[Unit]       = whenClosed.getOrElse(Sync[F].unit)
+  def onOpen: F[Unit]        = whenOpened.getOrElse(Sync[F].unit)
+  def onHalfOpen: F[Unit]    = whenHalfOpened.getOrElse(Sync[F].unit)
 
   private[trippy] def sideTask(oldState: CircuitState, newState: CircuitState): F[Unit] = (oldState, newState) match {
     case (HalfOpen | _: Open, _: Closed) => onClose
@@ -44,11 +49,7 @@ object CircuitBreaker {
       whenHalfOpened: Option[F[Unit]] = None
   ): F[CircuitBreaker[F]] =
     Ref.of[F, CircuitState](Closed(0)).map { ref =>
-      new CircuitBreaker[F](ref) {
-        override def onClose: F[Unit]    = whenClosed.getOrElse(Sync[F].unit)
-        override def onOpen: F[Unit]     = whenOpened.getOrElse(Sync[F].unit)
-        override def onHalfOpen: F[Unit] = whenHalfOpened.getOrElse(Sync[F].unit)
-
+      new CircuitBreaker[F](ref, whenClosed, whenOpened, whenHalfOpened) {
         override def execute[A](task: F[A]): F[A] =
           ref.modify {
             case c: Closed => (c, attemptTask(task, c.failures))
@@ -92,11 +93,7 @@ object CircuitBreaker {
       whenHalfOpened: Option[F[Unit]] = None
   ): F[CircuitBreaker[F]] =
     Ref.of[F, CircuitState](Closed(0)).map { ref =>
-      new CircuitBreaker[F](ref) {
-        override def onClose: F[Unit]    = whenClosed.getOrElse(Sync[F].unit).attempt.void
-        override def onOpen: F[Unit]     = whenOpened.getOrElse(Sync[F].unit).attempt.void
-        override def onHalfOpen: F[Unit] = whenHalfOpened.getOrElse(Sync[F].unit).attempt.void
-
+      new CircuitBreaker[F](ref, whenClosed, whenOpened, whenHalfOpened) {
         override def execute[A](task: F[A]): F[A] =
           ref.modify {
             case c: Closed => (c, attemptTask(task, c.failures))

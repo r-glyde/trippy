@@ -67,7 +67,7 @@ trait CircuitBreakerBehaviour { this: IOSpecBase with Matchers with Suite with E
       for {
         breaker <- basicBreaker(1, 1.millis)
         _       <- breaker.execute(failedIO).attempt
-        _       <- IO.sleep(100.millis)
+        _       <- IO.sleep(250.millis)
         output  <- breaker.execute(successIO).attempt
         state   <- breaker.state
       } yield {
@@ -80,7 +80,7 @@ trait CircuitBreakerBehaviour { this: IOSpecBase with Matchers with Suite with E
       for {
         breaker <- basicBreaker(1, 1.millis)
         _       <- breaker.execute(failedIO).attempt
-        _       <- IO.sleep(100.millis)
+        _       <- IO.sleep(250.millis)
         fail    <- breaker.execute(failedIO).attempt
         state   <- breaker.state
       } yield {
@@ -103,10 +103,10 @@ trait CircuitBreakerBehaviour { this: IOSpecBase with Matchers with Suite with E
                     Some(IO(halfOpened += 1))
                   )
         _ <- breaker.execute(failedIO).attempt
-        _ <- IO.sleep(100.millis)
+        _ <- IO.sleep(250.millis)
         _ <- breaker.execute(successIO).attempt
-        _ <- breaker.execute(IO.sleep(100.millis) >> successIO).attempt
-        _ <- IO.sleep(100.millis)
+        _ <- breaker.execute(IO.sleep(250.millis) >> successIO).attempt
+        _ <- IO.sleep(250.millis)
         _ <- breaker.execute(successIO).attempt
       } yield {
         closed shouldBe 2
