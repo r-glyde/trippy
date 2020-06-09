@@ -53,7 +53,7 @@ object CircuitBreaker {
           ref.modify {
             case c: Closed => (c, attemptTask(task, c.failures))
             case o: Open =>
-              (o, attemptFromOpen(o.openedAt, resetTimeout.toMillis, attemptTask(task, maxFailures), onHalfOpen, ref))
+              (o, attemptFromOpen(o, resetTimeout.toMillis, attemptTask(task, maxFailures), onHalfOpen, ref))
             case HalfOpen => (HalfOpen, Sync[F].raiseError[A](CircuitBreakerRejection))
           }.flatten
 
@@ -93,15 +93,15 @@ object CircuitBreaker {
   ): F[CircuitBreaker[F]] =
     Ref.of[F, CircuitState](Closed(0)).map { ref =>
       new CircuitBreaker[F](ref) {
-        override def onClose: F[Unit]    = whenClosed.getOrElse(Sync[F].unit)
-        override def onOpen: F[Unit]     = whenOpened.getOrElse(Sync[F].unit)
-        override def onHalfOpen: F[Unit] = whenHalfOpened.getOrElse(Sync[F].unit)
+        override def onClose: F[Unit]    = whenClosed.getOrElse(Sync[F].unit).attempt.void
+        override def onOpen: F[Unit]     = whenOpened.getOrElse(Sync[F].unit).attempt.void
+        override def onHalfOpen: F[Unit] = whenHalfOpened.getOrElse(Sync[F].unit).attempt.void
 
         override def execute[A](task: F[A]): F[A] =
           ref.modify {
             case c: Closed => (c, attemptTask(task, c.failures))
             case o: Open =>
-              (o, attemptFromOpen(o.openedAt, resetTimeout.toMillis, attemptTask(task, maxFailures), onHalfOpen, ref))
+              (o, attemptFromOpen(o, resetTimeout.toMillis, attemptTask(task, maxFailures), onHalfOpen, ref))
             case HalfOpen => (HalfOpen, Sync[F].raiseError[A](CircuitBreakerRejection))
           }.flatten
 
@@ -128,7 +128,7 @@ object CircuitBreaker {
     }
 
   private def attemptFromOpen[F[_] : Sync : Clock, A](
-      openedAt: Long,
+      open: Open,
       resetMillis: Long,
       task: F[A],
       onHalfOpen: F[Unit],
@@ -136,8 +136,8 @@ object CircuitBreaker {
   ): F[A] =
     Clock[F].realTime(MILLISECONDS).flatMap { now =>
       ref.modify { _ =>
-        if ((now - openedAt) >= resetMillis) (HalfOpen, onHalfOpen >> task)
-        else (Open(openedAt), Sync[F].raiseError[A](CircuitBreakerRejection))
+        if ((now - open.openedAt) >= resetMillis) (HalfOpen, onHalfOpen >> task)
+        else (open, Sync[F].raiseError[A](CircuitBreakerRejection))
       }.flatten
     }
 }

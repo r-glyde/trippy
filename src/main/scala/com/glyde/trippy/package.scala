@@ -2,7 +2,7 @@ package com.glyde
 
 import cats.effect.Sync
 import cats.effect.concurrent.Ref
-import cats.syntax.flatMap._
+import cats.implicits._
 
 package object trippy {
 

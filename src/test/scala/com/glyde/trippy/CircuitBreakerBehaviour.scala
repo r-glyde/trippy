@@ -103,10 +103,10 @@ trait CircuitBreakerBehaviour { this: IOSpecBase with Matchers with Suite with E
                     Some(IO(halfOpened += 1))
                   )
         _ <- breaker.execute(failedIO).attempt
-        _ <- IO.sleep(10.millis)
+        _ <- IO.sleep(100.millis)
         _ <- breaker.execute(successIO).attempt
         _ <- breaker.execute(IO.sleep(100.millis) >> successIO).attempt
-        _ <- IO.sleep(10.millis)
+        _ <- IO.sleep(100.millis)
         _ <- breaker.execute(successIO).attempt
       } yield {
         closed shouldBe 2
