@@ -15,11 +15,11 @@ import scala.concurrent.duration._
 class CircuitBreakerSpec extends IOSpecBase with Matchers with Suite with EitherValues with CircuitBreakerBehaviour {
 
   "A synchronous circuit breaker" should {
-    behave like circuitBreaker(CircuitBreaker.ofSync[IO])
+    behave like circuitBreaker(CircuitBreaker.sync[IO])
 
     "increment failure count when task exceeds callTimeout" in {
       for {
-        breaker <- CircuitBreaker.ofSync[IO](2, 10.seconds, 1.millis)
+        breaker <- CircuitBreaker.sync[IO](2, 10.seconds, 1.millis)
         slow    <- breaker.execute(IO.sleep(100.millis) >> successIO).attempt
         state   <- breaker.state
         output  <- breaker.execute(successIO).attempt
@@ -32,7 +32,7 @@ class CircuitBreakerSpec extends IOSpecBase with Matchers with Suite with Either
 
     "fail fast a task after reaching maxFailures from call timeouts" in {
       for {
-        breaker <- CircuitBreaker.ofSync[IO](1, 10.seconds, 1.millis)
+        breaker <- CircuitBreaker.sync[IO](1, 10.seconds, 1.millis)
         slow    <- breaker.execute(IO.sleep(100.millis) >> successIO).attempt
         state   <- breaker.state
         fail    <- breaker.execute(successIO).attempt
@@ -45,11 +45,11 @@ class CircuitBreakerSpec extends IOSpecBase with Matchers with Suite with Either
   }
 
   "A concurrent circuit breaker" should {
-    behave like circuitBreaker(CircuitBreaker.ofConc[IO])
+    behave like circuitBreaker(CircuitBreaker.concurrent[IO])
 
     "short circuit task execution exceeding callTimeout" in {
       for {
-        breaker <- CircuitBreaker.ofConc[IO](1, 10.seconds, 1.millis)
+        breaker <- CircuitBreaker.concurrent[IO](1, 10.seconds, 1.millis)
         slow    <- breaker.execute(IO.sleep(100.millis) >> successIO).attempt
         state   <- breaker.state
       } yield {
@@ -60,7 +60,7 @@ class CircuitBreakerSpec extends IOSpecBase with Matchers with Suite with Either
 
     "fail fast a task after reaching maxFailures from call timeouts" in {
       for {
-        breaker <- CircuitBreaker.ofConc[IO](1, 10.seconds, 1.millis)
+        breaker <- CircuitBreaker.concurrent[IO](1, 10.seconds, 1.millis)
         slow    <- breaker.execute(IO.sleep(100.millis) >> successIO).attempt
         state   <- breaker.state
         fail    <- breaker.execute(successIO).attempt

@@ -14,20 +14,32 @@ import scala.concurrent.duration._
 @nowarn("msg=right-biased")
 trait CircuitBreakerBehaviour { this: IOSpecBase with Matchers with Suite with EitherValues =>
 
+  type CreateBreaker = (
+      Int,
+      FiniteDuration,
+      FiniteDuration,
+      Option[IO[Unit]],
+      Option[IO[Unit]],
+      Option[IO[Unit]]
+  ) => IO[CircuitBreaker[IO]]
+
   val successIO = IO(42)
   val failedIO  = IO[Int](throw new RuntimeException("Boom"))
 
-  def circuitBreaker(createBreaker: (Int, FiniteDuration, FiniteDuration) => IO[CircuitBreaker[IO]]) = {
+  def circuitBreaker(createBreaker: CreateBreaker) = {
+    val basicBreaker = (maxFailures: Int, resetTimeout: FiniteDuration) =>
+      createBreaker(maxFailures, resetTimeout, 10.seconds, None, None, None)
+
     "execute a task when run in closed state" in {
       for {
-        breaker <- createBreaker(1, 10.seconds, 10.seconds)
+        breaker <- basicBreaker(1, 10.seconds)
         output  <- breaker.execute(successIO).attempt
       } yield output.right.value shouldBe 42
     }
 
     "increment failure count on task failure" in {
       for {
-        breaker <- createBreaker(2, 10.seconds, 10.seconds)
+        breaker <- basicBreaker(2, 10.seconds)
         fail    <- breaker.execute(failedIO).attempt
         state   <- breaker.state
         output  <- breaker.execute(successIO).attempt
@@ -40,7 +52,7 @@ trait CircuitBreakerBehaviour { this: IOSpecBase with Matchers with Suite with E
 
     "fail fast a task after reaching maxFailures for failed tasks" in {
       for {
-        breaker <- createBreaker(1, 10.seconds, 10.seconds)
+        breaker <- basicBreaker(1, 10.seconds)
         failA   <- breaker.execute(failedIO).attempt
         state   <- breaker.state
         failB   <- breaker.execute(successIO).attempt
@@ -53,7 +65,7 @@ trait CircuitBreakerBehaviour { this: IOSpecBase with Matchers with Suite with E
 
     "execute a task after the configured resetTimeout" in {
       for {
-        breaker <- createBreaker(1, 1.millis, 10.seconds)
+        breaker <- basicBreaker(1, 1.millis)
         _       <- breaker.execute(failedIO).attempt
         _       <- IO.sleep(100.millis)
         output  <- breaker.execute(successIO).attempt
@@ -66,7 +78,7 @@ trait CircuitBreakerBehaviour { this: IOSpecBase with Matchers with Suite with E
 
     "set state back to open if attemped task fails after the resetTimeout" in {
       for {
-        breaker <- createBreaker(1, 1.millis, 10.seconds)
+        breaker <- basicBreaker(1, 1.millis)
         _       <- breaker.execute(failedIO).attempt
         _       <- IO.sleep(100.millis)
         fail    <- breaker.execute(failedIO).attempt
@@ -76,5 +88,33 @@ trait CircuitBreakerBehaviour { this: IOSpecBase with Matchers with Suite with E
         state shouldBe a[Open]
       }
     }
+
+    "perform on* functions when breaker transitions" in {
+      var closed     = 0
+      var opened     = 0
+      var halfOpened = 0
+      for {
+        breaker <- createBreaker(
+                    1,
+                    1.millis,
+                    1.millis,
+                    Some(IO(closed += 1)),
+                    Some(IO(opened += 1)),
+                    Some(IO(halfOpened += 1))
+                  )
+        _ <- breaker.execute(failedIO).attempt
+        _ <- IO.sleep(10.millis)
+        _ <- breaker.execute(successIO).attempt
+        _ <- breaker.execute(IO.sleep(100.millis) >> successIO).attempt
+        _ <- IO.sleep(10.millis)
+        _ <- breaker.execute(successIO).attempt
+      } yield {
+        closed shouldBe 2
+        opened shouldBe 2
+        halfOpened shouldBe 2
+      }
+    }
+
   }
+
 }
