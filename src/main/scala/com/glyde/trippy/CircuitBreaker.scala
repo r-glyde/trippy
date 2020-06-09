@@ -9,17 +9,18 @@ import cats.implicits._
 
 import scala.concurrent.duration.FiniteDuration
 
-sealed abstract class CircuitBreaker[F[_] : Sync] private (
+sealed abstract class CircuitBreaker[F[_] : Sync](
     private val ref: Ref[F, CircuitState],
     private val whenClosed: Option[F[Unit]],
     private val whenOpened: Option[F[Unit]],
     private val whenHalfOpened: Option[F[Unit]]
 ) {
   def execute[A](task: F[A]): F[A]
-  def state: F[CircuitState] = ref.get
-  def onClose: F[Unit]       = whenClosed.getOrElse(Sync[F].unit)
-  def onOpen: F[Unit]        = whenOpened.getOrElse(Sync[F].unit)
-  def onHalfOpen: F[Unit]    = whenHalfOpened.getOrElse(Sync[F].unit)
+
+  val state: F[CircuitState] = ref.get
+  val onClose: F[Unit]       = whenClosed.getOrElse(Sync[F].unit)
+  val onOpen: F[Unit]        = whenOpened.getOrElse(Sync[F].unit)
+  val onHalfOpen: F[Unit]    = whenHalfOpened.getOrElse(Sync[F].unit)
 
   private[trippy] def sideTask(oldState: CircuitState, newState: CircuitState): F[Unit] = (oldState, newState) match {
     case (HalfOpen | _: Open, _: Closed) => onClose
