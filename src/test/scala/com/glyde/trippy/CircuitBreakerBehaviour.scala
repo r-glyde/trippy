@@ -18,6 +18,7 @@ trait CircuitBreakerBehaviour { this: IOSpecBase with Matchers with Suite with E
       Int,
       FiniteDuration,
       FiniteDuration,
+      FiniteDuration => FiniteDuration,
       Option[IO[Unit]],
       Option[IO[Unit]],
       Option[IO[Unit]]
@@ -28,7 +29,7 @@ trait CircuitBreakerBehaviour { this: IOSpecBase with Matchers with Suite with E
 
   def circuitBreaker(createBreaker: CreateBreaker) = {
     val basicBreaker = (maxFailures: Int, resetTimeout: FiniteDuration) =>
-      createBreaker(maxFailures, resetTimeout, 10.seconds, None, None, None)
+      createBreaker(maxFailures, 10.seconds, resetTimeout, identity, None, None, None)
 
     "execute a task when run in closed state" in {
       for {
@@ -98,6 +99,7 @@ trait CircuitBreakerBehaviour { this: IOSpecBase with Matchers with Suite with E
                     1,
                     1.millis,
                     1.millis,
+                    identity,
                     Some(IO(closed += 1)),
                     Some(IO(opened += 1)),
                     Some(IO(halfOpened += 1))
@@ -112,6 +114,19 @@ trait CircuitBreakerBehaviour { this: IOSpecBase with Matchers with Suite with E
         closed shouldBe 2
         opened shouldBe 2
         halfOpened shouldBe 2
+      }
+    }
+
+    "use resetBackoff to change retry timings" in {
+      for {
+        breaker <- createBreaker(1, 1.millis, 1.millis, _ * 2, None, None, None)
+        _       <- List.fill(6)(breaker.execute(failedIO).attempt >> IO.sleep(100.millis)).sequence_
+        state   <- breaker.state
+      } yield {
+        state match {
+          case Open(_, finalTimeout) => finalTimeout.toMillis shouldBe 32
+          case _                     => fail
+        }
       }
     }
 
