@@ -1,0 +1,13 @@
+.cache
+target/
+lib_managed/
+src_managed/
+project/boot/
+project/target/
+project/plugins/project/
+project/.bloop
+project/metals.sbt
+.bloop/
+.bsp/
+.metals/
+.idea
