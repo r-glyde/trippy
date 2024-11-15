@@ -73,5 +73,17 @@ class CircuitBreakerSpec extends AsyncWordSpec, AsyncIOSpec, Matchers, EitherVal
 
       cb.protect(slow).attempt.map(_.left.value shouldBe a[TimeoutException])
     }
+
+    "only count defined failures" in {
+      val cb = CircuitBreaker.of(Ref.unsafe[IO, CircuitState](CircuitState.Closed(0)), 2, 1.second, 10.millis)
+
+      for {
+        out <- cb.protect(failure, PartialFunction.fromFunction(_.isRight)).attempt
+        state <- cb.state
+      } yield {
+        out.left.map(_.getMessage) shouldBe Left("boom!")
+        state shouldBe CircuitState.Closed(0)
+      }
+    }
   }
 }
