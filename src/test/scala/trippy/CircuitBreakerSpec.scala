@@ -2,7 +2,9 @@ package trippy
 
 import cats.effect.IO
 import cats.effect.kernel.Ref
+import cats.effect.std.Mutex
 import cats.effect.testing.scalatest.AsyncIOSpec
+import cats.syntax.all.*
 import org.scalatest.EitherValues
 import org.scalatest.matchers.should.Matchers
 import org.scalatest.wordspec.AsyncWordSpec
@@ -39,51 +41,82 @@ class CircuitBreakerSpec extends AsyncWordSpec, AsyncIOSpec, Matchers, EitherVal
     }
 
     "reset the failure counter after a successful task" in {
-      val cb = CircuitBreaker.of(Ref.unsafe[IO, CircuitState](CircuitState.Closed(1)), 2, 1.second, 10.millis)
-
-      cb.protect(success) >> cb.state.map(_ shouldBe CircuitState.Closed(0))
+      buildCircuitBreaker(CircuitState.Closed(1), 2, 1.second, 10.millis).flatMap { cb =>
+        cb.protect(success) >> cb.state.map(_ shouldBe CircuitState.Closed(0))
+      }
     }
 
     "open the circuit breaker when failure count reaches max failures" in {
-      val cb = CircuitBreaker.of(Ref.unsafe[IO, CircuitState](CircuitState.Closed(1)), 2, 1.second, 10.millis)
+      buildCircuitBreaker(CircuitState.Closed(1), 2, 1.second, 10.millis).flatMap { cb =>
+        cb.protect(failure).attempt >> cb.state.map(_ shouldBe a[CircuitState.Open])
+      }
 
-      cb.protect(failure).attempt >> cb.state.map(_ shouldBe a[CircuitState.Open])
     }
 
     "reject a task if breaker has been opened due to too many failures" in {
-      val cb = CircuitBreaker.of(Ref.unsafe[IO, CircuitState](CircuitState.Open(Instant.now().plusSeconds(1))), 2, 1.second, 10.millis)
+      buildCircuitBreaker(CircuitState.Open(Instant.now().plusSeconds(1)), 2, 1.second, 10.millis).flatMap { cb =>
+        cb.protect(success).attempt.map(_ shouldBe Left(CircuitBreakerRejection))
+      }
 
-      cb.protect(success).attempt.map(_ shouldBe Left(CircuitBreakerRejection))
     }
 
     "reset an open circuit breaker after the reset timeout has passed" in {
-      val cb = CircuitBreaker.of(Ref.unsafe[IO, CircuitState](CircuitState.Open(Instant.now().minusSeconds(1))), 2, 1.second, 10.millis)
+      buildCircuitBreaker(CircuitState.Open(Instant.now().minusSeconds(1)), 2, 1.second, 10.millis).flatMap { cb =>
+        cb.protect(success).map(_ shouldBe "cupcat")
+      }
 
-      cb.protect(success).map(_ shouldBe "cupcat")
     }
 
     "time out a slow task" in {
-      val cb = CircuitBreaker.of(Ref.unsafe[IO, CircuitState](CircuitState.Closed(0)), 2, 1.second, 10.millis)
+      buildCircuitBreaker(CircuitState.Closed(0), 2, 1.second, 10.millis).flatMap { cb =>
+        cb.protect(slow).attempt.map(_.left.value shouldBe a[TimeoutException])
+      }
 
-      cb.protect(slow).attempt.map(_.left.value shouldBe a[TimeoutException])
     }
 
-    "time out a slow task when closing" in {
-      val cb = CircuitBreaker.of(Ref.unsafe[IO, CircuitState](CircuitState.Open(Instant.now().minusSeconds(1))), 2, 1.second, 10.millis)
+    "time out a slow task when open" in {
+      buildCircuitBreaker(CircuitState.Open(Instant.now().minusSeconds(1)), 2, 1.second, 10.millis).flatMap { cb =>
+        cb.protect(slow).attempt.map(_.left.value shouldBe a[TimeoutException])
+      }
 
-      cb.protect(slow).attempt.map(_.left.value shouldBe a[TimeoutException])
     }
 
     "only count defined failures" in {
-      val cb = CircuitBreaker.of(Ref.unsafe[IO, CircuitState](CircuitState.Closed(0)), 2, 1.second, 10.millis)
-
-      for {
-        out <- cb.protect(failure, PartialFunction.fromFunction(_.isRight)).attempt
-        state <- cb.state
-      } yield {
-        out.left.map(_.getMessage) shouldBe Left("boom!")
-        state shouldBe CircuitState.Closed(0)
+      buildCircuitBreaker(CircuitState.Closed(0), 2, 1.second, 10.millis).flatMap { cb =>
+        for {
+          out <- cb.protect(failure, PartialFunction.fromFunction(_.isRight)).attempt
+          state <- cb.state
+        } yield {
+          out.left.map(_.getMessage) shouldBe Left("boom!")
+          state shouldBe CircuitState.Closed(0)
+        }
       }
+
     }
+
+    "handle being used in parallel" in {
+      CircuitBreaker.locking[IO](5, 10.second, 100.millis).flatMap { cb =>
+        (1 to 100).toList.parTraverse { i =>
+          for {
+            out <- cb.protect(failure).attempt
+//            _ <- IO.println(s"Task $i [${out.left.value.getMessage}]")
+          } yield out
+        }.map { result =>
+          val failures = result.collect { case Left(error) => error.getMessage }
+
+          failures.length shouldBe 100
+          failures.count(_.contains("boom!")) shouldBe 5
+          failures.count(!_.contains("boom!")) shouldBe 95
+        }
+      }
+
+    }
+  }
+
+  def buildCircuitBreaker(state: CircuitState, maxFailures: Int, resetTimeout: FiniteDuration, callTimeout: FiniteDuration): IO[CircuitBreaker[IO]] = {
+    for {
+      ref <- Ref.of[IO, CircuitState](state)
+      mtx <- Mutex[IO]
+    } yield CircuitBreaker.of[IO](ref, maxFailures, resetTimeout, callTimeout)
   }
 }
