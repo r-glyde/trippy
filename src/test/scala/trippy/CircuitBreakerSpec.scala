@@ -18,10 +18,11 @@ class CircuitBreakerSpec extends AsyncWordSpec, AsyncIOSpec, Matchers, EitherVal
   val success: IO[String] = IO("cupcat")
   val failure: IO[String] = IO.raiseError(Throwable("boom!"))
   val slow: IO[String] = IO.sleep(50.millis) >> success
+  val callback: CircuitState => IO[Unit] = _ => IO.unit
 
-  "CircuitBreaker#protect" should {
+  "CircuitBreaker" should {
     "succeed with the result of a given task if breaker is closed" in {
-      CircuitBreaker.nonLocking[IO](2, 1.second, 10.millis).flatMap { cb =>
+      CircuitBreaker.nonLocking[IO](2, 1.second, 10.millis, callback).flatMap { cb =>
           for {
             out <- cb.protect(success)
             state <- cb.state
@@ -31,7 +32,7 @@ class CircuitBreakerSpec extends AsyncWordSpec, AsyncIOSpec, Matchers, EitherVal
     }
 
     "fail with the error of a given task if breaker is closed" in {
-      CircuitBreaker.nonLocking[IO](2, 1.second, 10.millis).flatMap { cb =>
+      CircuitBreaker.nonLocking[IO](2, 1.second, 10.millis, callback).flatMap { cb =>
           for {
             out <- cb.protect(failure).attempt
             state <- cb.state
@@ -95,11 +96,11 @@ class CircuitBreakerSpec extends AsyncWordSpec, AsyncIOSpec, Matchers, EitherVal
     }
 
     "handle being used in parallel" in {
-      CircuitBreaker.locking[IO](5, 10.second, 100.millis).flatMap { cb =>
+      CircuitBreaker.locking[IO](5, 10.second, 100.millis, callback).flatMap { cb =>
         (1 to 100).toList.parTraverse { i =>
           for {
             out <- cb.protect(failure).attempt
-//            _ <- IO.println(s"Task $i [${out.left.value.getMessage}]")
+            //            _ <- IO.println(s"Task $i [${out.left.value.getMessage}]")
           } yield out
         }.map { result =>
           val failures = result.collect { case Left(error) => error.getMessage }
@@ -113,10 +114,6 @@ class CircuitBreakerSpec extends AsyncWordSpec, AsyncIOSpec, Matchers, EitherVal
     }
   }
 
-  def buildCircuitBreaker(state: CircuitState, maxFailures: Int, resetTimeout: FiniteDuration, callTimeout: FiniteDuration): IO[CircuitBreaker[IO]] = {
-    for {
-      ref <- Ref.of[IO, CircuitState](state)
-      mtx <- Mutex[IO]
-    } yield CircuitBreaker.of[IO](ref, maxFailures, resetTimeout, callTimeout)
-  }
+  def buildCircuitBreaker(state: CircuitState, maxFailures: Int, resetTimeout: FiniteDuration, callTimeout: FiniteDuration): IO[CircuitBreaker[IO]] =
+    Ref.of[IO, CircuitState](state).map(CircuitBreaker.of[IO](_, None, maxFailures, resetTimeout, callTimeout, callback))
 }
