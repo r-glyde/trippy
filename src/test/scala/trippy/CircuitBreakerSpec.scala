@@ -21,7 +21,7 @@ class CircuitBreakerSpec extends AsyncWordSpec, AsyncIOSpec, Matchers, EitherVal
 
   "CircuitBreaker#protect" should {
     "succeed with the result of a given task if breaker is closed" in {
-      CircuitBreaker.make[IO](2, 1.second, 10.millis).flatMap { cb =>
+      CircuitBreaker.nonLocking[IO](2, 1.second, 10.millis).flatMap { cb =>
           for {
             out <- cb.protect(success)
             state <- cb.state
@@ -31,7 +31,7 @@ class CircuitBreakerSpec extends AsyncWordSpec, AsyncIOSpec, Matchers, EitherVal
     }
 
     "fail with the error of a given task if breaker is closed" in {
-      CircuitBreaker.make[IO](2, 1.second, 10.millis).flatMap { cb =>
+      CircuitBreaker.nonLocking[IO](2, 1.second, 10.millis).flatMap { cb =>
           for {
             out <- cb.protect(failure).attempt
             state <- cb.state
